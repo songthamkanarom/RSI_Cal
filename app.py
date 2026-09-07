@@ -35,14 +35,12 @@ def calculate_indicators():
             stoch_val = stoch_series.iloc[-1]
             current_stoch = round(float(stoch_val), 2) if not pd.isna(stoch_val) else "-"
             
-            # ดึงข้อมูลข่าวสารหรือลิงก์อ้างอิงจาก Yahoo Finance
-            news_list = []
+            # สร้างรายการข่าวในรูปแบบฟังก์ชัน HYPERLINK ของ Google Sheets
+            hyperlinks = []
             try:
-                # ตรวจสอบรูปแบบข้อมูลข่าวจาก yfinance
                 raw_news = ticker.news
                 if raw_news and isinstance(raw_news, list):
                     for item in raw_news[:3]:
-                        # รองรับโครงสร้างข้อมูลทั้งแบบใหม่และแบบเก่าของ yfinance
                         content = item.get('content', {})
                         title = content.get('title') or item.get('title')
                         
@@ -52,23 +50,26 @@ def calculate_indicators():
                             link = item.get('link')
                             
                         if title and link:
-                            news_list.append(f"• {title} ({link})")
+                            # ตัดเครื่องหมายคำพูดออกเพื่อป้องกันสูตร Google Sheets พัง
+                            safe_title = title.replace('"', '').replace("'", "")
+                            hyperlinks.append(f'=HYPERLINK("{link}", "{safe_title}")')
             except Exception:
                 pass
             
-            # หากดึงข่าวตรงๆ ไม่สำเร็จ ให้ใส่ลิงก์หน้า Yahoo Finance ของหุ้นตัวนั้นแทนเป็นสำรอง
-            if not news_list:
+            # ถ้าไม่มีข่าว ให้ใช้ลิงก์สำรองหลักของ Yahoo Finance
+            if not hyperlinks:
                 fallback_link = f"https://finance.yahoo.com/quote/{clean_symbol}"
-                news_list.append(f"• ข้อมูลและข่าวสารล่าสุดของ {clean_symbol} ({fallback_link})")
-                news_list.append(f"• งบการเงินและกราฟเชิงลึก ({fallback_link}/key-statistics/)")
-                news_list.append(f"• หน้าวิเคราะห์แนวโน้มตลาด ({fallback_link}/chart/)")
-                
-            news_formatted = "\n".join(news_list)
+                hyperlinks.append(f'=HYPERLINK("{fallback_link}", "ภาพรวมและข้อมูลล่าสุดของ {clean_symbol}")')
+                hyperlinks.append(f'=HYPERLINK("{fallback_link}/key-statistics/", "งบการเงินและสถิติสำคัญ")')
+                hyperlinks.append(f'=HYPERLINK("{fallback_link}/chart/", "กราฟวิเคราะห์แนวโน้มราคา")')
+            
+            # รวมสูตรด้วยเครื่องหมาย & ส,น,ท,ร (CONCAT) ของ Google Sheets เพื่อให้แสดงหลายบรรทัดในเซลล์เดียว
+            news_formula = " & CHAR(10) & ".join(hyperlinks)
             
             results[symbol] = {
                 "rsi": current_rsi,
                 "stoch": current_stoch,
-                "news": news_formatted
+                "news": news_formula
             }
         except Exception as e:
             results[symbol] = {"rsi": "-", "stoch": "-", "news": "-"}
