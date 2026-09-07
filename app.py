@@ -35,26 +35,35 @@ def calculate_indicators():
             stoch_val = stoch_series.iloc[-1]
             current_stoch = round(float(stoch_val), 2) if not pd.isna(stoch_val) else "-"
             
-            # ดึงข่าวสารล่าสุด 3 ลิงก์
+            # ดึงข้อมูลข่าวสารหรือลิงก์อ้างอิงจาก Yahoo Finance
             news_list = []
             try:
+                # ตรวจสอบรูปแบบข้อมูลข่าวจาก yfinance
                 raw_news = ticker.news
-                if raw_news:
-                    count = 0
-                    for item in raw_news:
-                        if count >= 3:
-                            break
-                        title = item.get('title', '')
-                        link = item.get('link', '')
+                if raw_news and isinstance(raw_news, list):
+                    for item in raw_news[:3]:
+                        # รองรับโครงสร้างข้อมูลทั้งแบบใหม่และแบบเก่าของ yfinance
+                        content = item.get('content', {})
+                        title = content.get('title') or item.get('title')
+                        
+                        click_through = content.get('clickThroughUrl', {})
+                        link = click_through.get('url') if isinstance(click_through, dict) else None
+                        if not link:
+                            link = item.get('link')
+                            
                         if title and link:
-                            # แปลงหัวข้อข่าวเบื้องต้นหรือนำหัวข้อเดิมมาจัดรูปแบบร่วมกับลิงก์
-                            news_str = f"• {title} ({link})"
-                            news_list.append(news_str)
-                            count += 1
+                            news_list.append(f"• {title} ({link})")
             except Exception:
                 pass
+            
+            # หากดึงข่าวตรงๆ ไม่สำเร็จ ให้ใส่ลิงก์หน้า Yahoo Finance ของหุ้นตัวนั้นแทนเป็นสำรอง
+            if not news_list:
+                fallback_link = f"https://finance.yahoo.com/quote/{clean_symbol}"
+                news_list.append(f"• ข้อมูลและข่าวสารล่าสุดของ {clean_symbol} ({fallback_link})")
+                news_list.append(f"• งบการเงินและกราฟเชิงลึก ({fallback_link}/key-statistics/)")
+                news_list.append(f"• หน้าวิเคราะห์แนวโน้มตลาด ({fallback_link}/chart/)")
                 
-            news_formatted = "\n".join(news_list) if news_list else "-"
+            news_formatted = "\n".join(news_list)
             
             results[symbol] = {
                 "rsi": current_rsi,
