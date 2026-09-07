@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import yfinance as yf
 import ta
+import pandas as pd
 
 app = Flask(__name__)
 
@@ -12,21 +13,30 @@ def calculate_indicators():
     results = {}
     for symbol in symbols:
         try:
-            clean_symbol = symbol.split(":")[-1] 
-            df = yf.download(clean_symbol, period="60d", interval="1d", progress=False)
+            # ตัด prefix เช่น NASDAQ:, NYSE: ออก เหลือแค่ชื่อย่อหลัก
+            clean_symbol = symbol.split(":")[-1].strip()
+            
+            # ดึงข้อมูลย้อนหลัง 60 วันด้วย Ticker history
+            ticker = yf.Ticker(clean_symbol)
+            df = ticker.history(period="60d")
             
             if df.empty or len(df) < 15:
                 results[symbol] = {"rsi": "-", "stoch": "-"}
                 continue
                 
-            # คำนวณ RSI (14)
-            rsi_series = ta.rsi(df['Close'], length=14)
-            current_rsi = round(float(rsi_series.iloc[-1]), 2) if not rsi_series.empty else "-"
+            close_prices = df['Close']
+            high_prices = df['High']
+            low_prices = df['Low']
             
-            # คำนวณ Stochastic %K (14)
-            stoch_df = ta.stoch(df['High'], df['Low'], df['Close'], k=14, d=3, smooth_k=3)
-            k_col = [c for c in stoch_df.columns if c.startswith('STOCHk')][0]
-            current_stoch = round(float(stoch_df[k_col].iloc[-1]), 2) if not stoch_df.empty else "-"
+            # คำนวณ RSI (14)
+            rsi_series = ta.momentum.rsi(close_prices, window=14)
+            rsi_val = rsi_series.iloc[-1]
+            current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else "-"
+            
+            # คำนวณ Stochastic %K (14, 3)
+            stoch_series = ta.momentum.stoch(high_prices, low_prices, close_prices, window=14, smooth_window=3)
+            stoch_val = stoch_series.iloc[-1]
+            current_stoch = round(float(stoch_val), 2) if not pd.isna(stoch_val) else "-"
             
             results[symbol] = {
                 "rsi": current_rsi,
