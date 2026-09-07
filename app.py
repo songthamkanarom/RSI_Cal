@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import yfinance as yf
-import pandas_ta as ta
+import ta
 
 app = Flask(__name__)
 
