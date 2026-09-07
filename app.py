@@ -35,7 +35,7 @@ def calculate_indicators():
             stoch_val = stoch_series.iloc[-1]
             current_stoch = round(float(stoch_val), 2) if not pd.isna(stoch_val) else "-"
             
-            # สร้างรายการข่าวในรูปแบบฟังก์ชัน HYPERLINK ของ Google Sheets
+            # สร้างฟังก์ชัน HYPERLINK สำหรับ Google Sheets
             hyperlinks = []
             try:
                 raw_news = ticker.news
@@ -50,21 +50,21 @@ def calculate_indicators():
                             link = item.get('link')
                             
                         if title and link:
-                            # ตัดเครื่องหมายคำพูดออกเพื่อป้องกันสูตร Google Sheets พัง
-                            safe_title = title.replace('"', '').replace("'", "")
-                            hyperlinks.append(f'=HYPERLINK("{link}", "{safe_title}")')
+                            # ตัดเครื่องหมายคำพูดออกทั้งหมด เพื่อป้องกันสูตร Google Sheets พัง
+                            safe_title = str(title).replace('"', '').replace("'", "").strip()
+                            hyperlinks.append(f'HYPERLINK("{link}", "{safe_title}")')
             except Exception:
                 pass
             
             # ถ้าไม่มีข่าว ให้ใช้ลิงก์สำรองหลักของ Yahoo Finance
             if not hyperlinks:
                 fallback_link = f"https://finance.yahoo.com/quote/{clean_symbol}"
-                hyperlinks.append(f'=HYPERLINK("{fallback_link}", "ภาพรวมและข้อมูลล่าสุดของ {clean_symbol}")')
-                hyperlinks.append(f'=HYPERLINK("{fallback_link}/key-statistics/", "งบการเงินและสถิติสำคัญ")')
-                hyperlinks.append(f'=HYPERLINK("{fallback_link}/chart/", "กราฟวิเคราะห์แนวโน้มราคา")')
+                hyperlinks.append(f'HYPERLINK("{fallback_link}", "ภาพรวมและข้อมูลล่าสุดของ {clean_symbol}")')
+                hyperlinks.append(f'HYPERLINK("{fallback_link}/key-statistics/", "งบการเงินและสถิติสำคัญ")')
+                hyperlinks.append(f'HYPERLINK("{fallback_link}/chart/", "กราฟวิเคราะห์แนวโน้มราคา")')
             
-            # รวมสูตรด้วยเครื่องหมาย & ส,น,ท,ร (CONCAT) ของ Google Sheets เพื่อให้แสดงหลายบรรทัดในเซลล์เดียว
-            news_formula = " & CHAR(10) & ".join(hyperlinks)
+            # ใช้การต่อสูตรด้วยโครงสร้าง Array หรือเครื่องหมายบรรทัดใหม่ของ Google Sheets
+            news_formula = "=" + " & CHAR(10) & ".join(hyperlinks)
             
             results[symbol] = {
                 "rsi": current_rsi,
