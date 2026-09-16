@@ -1,12 +1,9 @@
-import base64
-import requests
-import pandas as pd
-import ta
 from flask import Flask, request, jsonify
+import yfinance as yf
+import ta
+import pandas as pd
 
 app = Flask(__name__)
-
-FMP_API_KEY = "HJ3KIwe122MzRTlZf954ukkEMsXe5XHR"  # Key ของคุณจาก Apps Script[cite: 1]
 
 @app.route('/calculate-indicators', methods=['POST'])
 def calculate_indicators():
@@ -16,46 +13,57 @@ def calculate_indicators():
     results = {}
     for symbol in symbols:
         try:
-            clean_symbol = symbol.split(":")[-1].strip().upper()
+            clean_symbol = symbol.split(":")[-1].strip()
+            ticker = yf.Ticker(clean_symbol)
+            df = ticker.history(period="60d")
             
-            # 📌 1. ดึงข้อมูล Daily Historical Prices จาก FMP API
-            url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{clean_symbol}?timeseries=60&apikey={FMP_API_KEY}"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code != 200:
+            if df.empty or len(df) < 15:
                 results[symbol] = {"rsi": "-", "stoch": "-", "news": "-"}
                 continue
                 
-            json_data = response.json()
-            historical = json_data.get("historical", [])
+            close_prices = df['Close']
+            high_prices = df['High']
+            low_prices = df['Low']
             
-            if not historical or len(historical) < 15:
-                results[symbol] = {"rsi": "-", "stoch": "-", "news": "-"}
-                continue
-                
-            # แปลงข้อมูลเป็น DataFrame (เรียงจากวันที่เก่าไปใหม่อัตโนมัติ)
-            df = pd.DataFrame(historical)
-            df = df.iloc[::-1].reset_index(drop=True)  # สลับลำดับให้วันเก่าขึ้นก่อน
-            
-            close_prices = df['close']
-            high_prices = df['high']
-            low_prices = df['low']
-            
-            # 📌 2. คำนวณ RSI (14)
+            # คำนวณ RSI (14)
             rsi_series = ta.momentum.rsi(close_prices, window=14)
             rsi_val = rsi_series.iloc[-1]
             current_rsi = round(float(rsi_val), 2) if not pd.isna(rsi_val) else "-"
             
-            # 📌 3. คำนวณ Stochastic %K (14, 3)
+            # คำนวณ Stochastic %K (14, 3)
             stoch_series = ta.momentum.stoch(high_prices, low_prices, close_prices, window=14, smooth_window=3)
             stoch_val = stoch_series.iloc[-1]
             current_stoch = round(float(stoch_val), 2) if not pd.isna(stoch_val) else "-"
             
-            # 📌 4. ลิงก์ข่าวสำรอง / สรุป
-            fallback_link = f"https://financialmodelingprep.com/financial-summary/{clean_symbol}"
-            hyperlinks = [
-                f'HYPERLINK("{fallback_link}", "ภาพรวมและงบการเงินของ {clean_symbol}")'
-            ]
+            # สร้างฟังก์ชัน HYPERLINK สำหรับ Google Sheets
+            hyperlinks = []
+            try:
+                raw_news = ticker.news
+                if raw_news and isinstance(raw_news, list):
+                    for item in raw_news[:3]:
+                        content = item.get('content', {})
+                        title = content.get('title') or item.get('title')
+                        
+                        click_through = content.get('clickThroughUrl', {})
+                        link = click_through.get('url') if isinstance(click_through, dict) else None
+                        if not link:
+                            link = item.get('link')
+                            
+                        if title and link:
+                            # ตัดเครื่องหมายคำพูดออกทั้งหมด เพื่อป้องกันสูตร Google Sheets พัง
+                            safe_title = str(title).replace('"', '').replace("'", "").strip()
+                            hyperlinks.append(f'HYPERLINK("{link}", "{safe_title}")')
+            except Exception:
+                pass
+            
+            # ถ้าไม่มีข่าว ให้ใช้ลิงก์สำรองหลักของ Yahoo Finance
+            if not hyperlinks:
+                fallback_link = f"https://finance.yahoo.com/quote/{clean_symbol}"
+                hyperlinks.append(f'HYPERLINK("{fallback_link}", "ภาพรวมและข้อมูลล่าสุดของ {clean_symbol}")')
+                hyperlinks.append(f'HYPERLINK("{fallback_link}/key-statistics/", "งบการเงินและสถิติสำคัญ")')
+                hyperlinks.append(f'HYPERLINK("{fallback_link}/chart/", "กราฟวิเคราะห์แนวโน้มราคา")')
+            
+            # ใช้การต่อสูตรด้วยโครงสร้าง Array หรือเครื่องหมายบรรทัดใหม่ของ Google Sheets
             news_formula = "=" + " & CHAR(10) & ".join(hyperlinks)
             
             results[symbol] = {
